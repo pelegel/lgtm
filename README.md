@@ -2,6 +2,11 @@
 
 This inference is based on "gaunernst/gemma-3-12b-it-qat-autoawq" model from HuggingFace.
 
+**Docker options:**
+```python
+-p 1111:1111 -p 8080:8080 -p 8090:8090 -p 8000:8000 -p 8265:8265 -p 8501:8501 -e OPEN_BUTTON_PORT=1111 -e OPEN_BUTTON_TOKEN=1 -e JUPYTER_DIR=/ -e DATA_DIRECTORY=/workspace/ -e PORTAL_CONFIG="localhost:1111:11111:/:Instance Portal|localhost:8000:18000:/docs:vLLM API|localhost:8265:28265:/:Ray Dashboard|localhost:8080:18080:/:Jupyter|localhost:8080:8080:/terminals/1:Jupyter Terminal" -e VLLM_MODEL=deepseek-ai/DeepSeek-R1-Distill-Llama-8B -e VLLM_ARGS="--max-model-len 8192 --enforce-eager --download-dir /workspace/models --host 127.0.0.1 --port 18000" -e RAY_ARGS="--head --port 6379  --dashboard-host 127.0.0.1 --dashboard-port 28265" -e RAY_ADDRESS=127.0.0.1:6379 -e USE_ALL_GPUS=true
+```
+
 **Create venv and install requirements:**
 ```python
 python -m venv vllm_venv
