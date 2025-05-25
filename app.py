@@ -5,11 +5,13 @@ import json
 # Backend streaming API URL
 STREAM_URL = "http://localhost:8090/stream"  # matches your FastAPI server address
 
+
+SYSTEM_PROMPT = """אתה עוזר בינה מלאכותית שמטרתו לספק מידע מדויק ואמין בשפה העברית. ענה באופן ברור, מדויק, ומבוסס על עובדות בלבד. אל תנחש – אם אינך בטוח בתשובה, כתוב שאתה לא יודע או שהמידע חסר."""
+
 # Keep chat history in session state
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "system", "content": [{"type": "text", "text": "תענה בבקשה על שאלות המשתמש בשפה העברית."}]}
-    ]
+        {"role": "system", "content": [{"type": "text", "text": SYSTEM_PROMPT}]}]
     st.session_state.chat_history = []  # for UI display
 
 def stream_response(messages):
@@ -27,12 +29,14 @@ def stream_response(messages):
                 except Exception:
                     continue
 
-st.title("Hebrew Chatbot UI")
+st.title("ChatPLG")
 
 # Display chat messages from history
 for msg in st.session_state.chat_history:
     with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+        rtl_text = f'<div dir="rtl" style="text-align: right;">{msg["content"]}</div>'
+        st.markdown(rtl_text, unsafe_allow_html=True)
+
 
 # User input
 if prompt := st.chat_input("כתוב שאלה כאן..."):
@@ -41,8 +45,9 @@ if prompt := st.chat_input("כתוב שאלה כאן..."):
     user_message = {"role": "user", "content": [{"type": "text", "text": prompt}]}
     st.session_state.messages.append(user_message)
     st.session_state.chat_history.append({"role": "user", "content": prompt})
-    st.chat_message("user").write(prompt)
-
+    rtl_user = f'<div dir="rtl" style="text-align: right;">{prompt}</div>'
+    st.chat_message("user").markdown(rtl_user, unsafe_allow_html=True)
+    
     # Prepare to collect full assistant response
     response_collector = []
 
@@ -52,8 +57,15 @@ if prompt := st.chat_input("כתוב שאלה כאן..."):
             yield partial_response
 
     # Stream response to UI
-    st.chat_message("assistant").write_stream(stream_generator())
+    with st.chat_message("assistant"):
+        response_placeholder = st.empty()
+        streamed_text = ""
+        for token in stream_generator():
+            streamed_text += token
+            rtl_partial = f'<div dir="rtl" style="text-align: right;">{streamed_text}</div>'
+            response_placeholder.markdown(rtl_partial, unsafe_allow_html=True)
 
+    
     # Final full response
     assistant_response = "".join(response_collector)
     assistant_message = {"role": "assistant", "content": [{"type": "text", "text": assistant_response}]}

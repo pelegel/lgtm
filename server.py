@@ -46,7 +46,7 @@ async def stream_vllm_response(messages):
         "messages": messages,
         "stream": True
     }
-    
+    print(messages)
     # Get metrics before sending the request
     running, waiting = await get_vllm_request_metrics()
     print(f"Before request - Running requests: {running}, Waiting requests: {waiting}")
