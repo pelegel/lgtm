@@ -1,0 +1,75 @@
+# promtail-config.yaml
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /var/log/promtail/positions.yaml # Store positions file in a more standard log directory
+                                           # Ensure Promtail user has write access to this dir
+
+clients:
+  - url: http://localhost:3100/loki/api/v1/push # Loki is running on localhost (same machine), so this is fine.
+                                             # If Loki is on a different machine in your closed network,
+                                             # replace 'localhost' with its internal IP address (e.g., http://192.168.1.100:3100)
+
+scrape_configs:
+  - job_name: streamlit-chatbot-app-logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: streamlit-chatbot-app-logs
+          __path__: /var/log/chatbot/streamlit_app.log # Path to your Streamlit app's log file
+          application: llm-chatbot-frontend
+          environment: production
+          component: streamlit-app
+          host: your_server_hostname_1 # Replace with the actual hostname of your Streamlit machine
+
+    pipeline_stages:
+      - json:
+          expressions:
+            timestamp: timestamp
+            level: level
+            message: message
+            request_id: extra_data_request_id # Extracts 'request_id' from 'extra_data' object
+            user_input: extra_data_user_input
+            assistant_response: extra_data_assistant_response
+            event_type: extra_data_event_type
+            # Add other extra_data fields you log if you want them as searchable fields
+      - labels:
+          level:
+          request_id: # Create a Loki label from the 'request_id' field for easy filtering
+          event_type: # Create a Loki label for the event_type
+
+  - job_name: fastapi-chatbot-server-logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: fastapi-chatbot-server-logs
+          __path__: /var/log/chatbot/fastapi_server.log # Path to your FastAPI server's log file
+          application: llm-chatbot-backend
+          environment: production
+          component: fastapi-server
+          host: your_server_hostname_1 # Replace with the actual hostname of your FastAPI server machine
+
+    pipeline_stages:
+      - json:
+          expressions:
+            timestamp: timestamp
+            level: level
+            message: message
+            request_id: extra_data_request_id # Extracts 'request_id' from 'extra_data' object
+            vllm_running_requests: extra_data_vllm_running_requests
+            vllm_waiting_requests: extra_data_vllm_waiting_requests
+            vllm_api_url: extra_data_vllm_api_url
+            vllm_model: extra_data_vllm_model
+            total_latency_ms: extra_data_total_latency_ms
+            event_type: extra_data_event_type
+            # Add other extra_data fields you log
+      - labels:
+          level:
+          request_id:
+          event_type:
+          vllm_running_requests: # Allows filtering by this field (caution for high cardinality)
+          vllm_waiting_requests: # Allows filtering by this field (caution for high cardinality)
