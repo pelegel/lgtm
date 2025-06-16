@@ -53,3 +53,37 @@ http://172.81.127.5:31855
 ```
 or the port on vast.ai that is mapped to 8501/tcp
 172.81.127.5:31855 -> 8501/tcp
+
+
+**Install Grafana:**
+```python
+sudo apt-get install -y adduser libfontconfig1 musl
+wget https://dl.grafana.com/enterprise/release/grafana-enterprise_12.0.1_amd64.deb
+sudo dpkg -i grafana-enterprise_12.0.1_amd64.deb
+
+	Or
+	wget https://dl.grafana.com/oss/release/grafana_12.0.1_amd64.deb
+	sudo dpkg -i grafana_12.0.1_amd64.deb
+	
+mkdir -p /workspace/logs/grafana
+sudo /usr/sbin/grafana-server \
+  --config=/etc/grafana/grafana.ini \
+  --homepath=/usr/share/grafana \
+  --packaging=deb \
+  > /workspace/logs/grafana/grafana.log 2>&1 &
+
+ps aux | grep grafana-server
+```
+
+
+**Install Loki:**
+```python
+wget https://github.com/grafana/loki/releases/download/v3.4.4/loki-linux-amd64.zip
+sudo apt update
+sudo apt install unzip -y # Install unzip if you don't have it
+unzip loki-linux-amd64.zip
+chmod +x loki-linux-amd64
+wget https://raw.githubusercontent.com/grafana/loki/v3.4.4/cmd/loki/loki-local-config.yaml
+./loki-linux-amd64 -config.file=loki-local-config.yaml
+curl http://localhost:3100/ready![image](https://github.com/user-attachments/assets/43d230dc-8867-4045-9f3a-2e4b8e4f7041)
+```
