@@ -33,20 +33,18 @@ class JsonFormatter(logging.Formatter):
 app_logger = logging.getLogger("streamlit_app")
 app_logger.setLevel(logging.INFO)
 
-# File handler for app logs
-file_handler = RotatingFileHandler(
-    APP_LOG_FILE,
-    maxBytes=10 * 1024 * 1024, # 10 MB per file
-    backupCount=5 # Keep 5 backup files
-)
-file_handler.setFormatter(JsonFormatter())
-app_logger.addHandler(file_handler)
+# Check if handlers already exist before adding
+if not app_logger.handlers: # This is the key line
+    # File handler for app logs
+    file_handler = RotatingFileHandler(
+        APP_LOG_FILE,
+        maxBytes=10 * 1024 * 1024, # 10 MB per file
+        backupCount=5 # Keep 5 backup files
+    )
+    file_handler.setFormatter(JsonFormatter())
+    app_logger.addHandler(file_handler)
+    
 
-# If you also want to see logs in the console
-# console_handler = logging.StreamHandler()
-# console_handler.setFormatter(JsonFormatter())
-# app_logger.addHandler(console_handler)
-# -----------------------------------------------
 
 # Backend streaming API URL
 STREAM_URL = "http://localhost:8090/stream"  # matches your FastAPI server address
@@ -59,13 +57,21 @@ if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "system", "content": [{"type": "text", "text": SYSTEM_PROMPT}]}]
     st.session_state.chat_history = []  # for UI display
+    st.session_state.last_logged_prompt = None # New state variable to prevent duplicate logging
 
-def stream_response(messages, request_id):
+def stream_response(messages, prompt, request_id):
     """
     Streams response from the backend and logs each interaction.
     """
     headers = {"Content-Type": "application/json"}
-    
+
+    # Log user message received
+    app_logger.info("User query received", extra={"extra_data": {
+        "request_id": request_id,
+        "user_input": prompt,
+        "event_type": "user_query"
+    }})
+
     # Log the full request being sent to the backend
     app_logger.info("Sending request to backend", extra={"extra_data": {
         "request_id": request_id,
@@ -75,7 +81,8 @@ def stream_response(messages, request_id):
 
     try:
         with requests.post(STREAM_URL, json={"messages": messages}, headers=headers, stream=True) as r:
-            r.raise_for_status() # Raise an HTTPError for bad responses (4xx or 5xx)
+            r.raise_for_status()
+
             for line in r.iter_lines():
                 if line and line.startswith(b"data:"):
                     chunk = line.lstrip(b"data: ").decode("utf-8").strip()
@@ -88,13 +95,6 @@ def stream_response(messages, request_id):
                     try:
                         data = json.loads(chunk)
                         delta = data["choices"][0]["delta"].get("content", "")
-                        
-                        # Log each partial response chunk (optional, can be very verbose)
-                        # app_logger.debug("Received chunk", extra={"extra_data": {
-                        #     "request_id": request_id,
-                        #     "delta": delta,
-                        #     "event_type": "backend_chunk"
-                        # }})
                         yield delta
                     except json.JSONDecodeError as e:
                         app_logger.error(f"JSON decoding error: {e}, Chunk: {chunk}", extra={"extra_data": {
@@ -104,7 +104,6 @@ def stream_response(messages, request_id):
                         }})
                         continue
                 else:
-                    # Log non-data lines for debugging if necessary
                     if line:
                         app_logger.debug(f"Non-data line received: {line.decode('utf-8')}", extra={"extra_data": {
                             "request_id": request_id,
@@ -116,45 +115,36 @@ def stream_response(messages, request_id):
             "event_type": "backend_connection_error"
         }})
         st.error(f"Connection error to backend: {e}. Please ensure the FastAPI server is running.")
-        yield "" # Yield empty string to prevent further errors in Streamlit display
+        yield ""
 
+
+# --------------------------
 st.title("ChatPLG")
 
-# Display chat messages from history
+# Display chat messages
 for msg in st.session_state.chat_history:
     with st.chat_message(msg["role"]):
         rtl_text = f'<div dir="rtl" style="text-align: right;">{msg["content"]}</div>'
         st.markdown(rtl_text, unsafe_allow_html=True)
 
-
 # User input
 if prompt := st.chat_input("כתוב שאלה כאן..."):
-    request_id = str(uuid.uuid4()) # Generate a unique ID for this full interaction
 
-    # Log user message before adding to state
-    app_logger.info("User query received", extra={"extra_data": {
-        "request_id": request_id,
-        "user_input": prompt,
-        "event_type": "user_query"
-    }})
+    request_id = str(uuid.uuid4())
 
-    # Append user message to messages and chat_history
     user_message = {"role": "user", "content": [{"type": "text", "text": prompt}]}
     st.session_state.messages.append(user_message)
     st.session_state.chat_history.append({"role": "user", "content": prompt})
     rtl_user = f'<div dir="rtl" style="text-align: right;">{prompt}</div>'
     st.chat_message("user").markdown(rtl_user, unsafe_allow_html=True)
-    
-    # Prepare to collect full assistant response
+
     response_collector = []
 
     def stream_generator():
-        # Pass the unique request_id to the stream_response function
-        for partial_response in stream_response(st.session_state.messages, request_id):
+        for partial_response in stream_response(st.session_state.messages, prompt, request_id):
             response_collector.append(partial_response)
             yield partial_response
 
-    # Stream response to UI
     with st.chat_message("assistant"):
         response_placeholder = st.empty()
         streamed_text = ""
@@ -163,16 +153,13 @@ if prompt := st.chat_input("כתוב שאלה כאן..."):
             rtl_partial = f'<div dir="rtl" style="text-align: right;">{streamed_text}</div>'
             response_placeholder.markdown(rtl_partial, unsafe_allow_html=True)
 
-    # Final full response
     assistant_response = "".join(response_collector)
     assistant_message = {"role": "assistant", "content": [{"type": "text", "text": assistant_response}]}
     st.session_state.messages.append(assistant_message)
     st.session_state.chat_history.append({"role": "assistant", "content": assistant_response})
 
-    # Log the complete assistant response
     app_logger.info("Assistant response completed", extra={"extra_data": {
-        "request_id": request_id,
+        "request_id": request_id,  
         "assistant_response": assistant_response,
         "event_type": "assistant_response_complete"
     }})
-
